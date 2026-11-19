@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ML Prediction</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main class="page-shell">
+    <section class="card">
+      <header class="card-header">
+        <p class="eyebrow">Flask Machine Learning</p>
+        <h1>Prediction Console</h1>
+        <p class="subtitle">Enter values below to run <strong>{{ model_filename }}</strong>.</p>
+      </header>
+
+      <form id="prediction-form" novalidate>
+        <div class="form-grid">
+          {% for name in feature_order %}
+            {% set field = features[name] %}
+            <div class="field">
+              <label for="{{ name }}">{{ name }}</label>
+              {% if field.type == "categorical" %}
+                <select id="{{ name }}" name="{{ name }}" required>
+                  <option value="">Select a value</option>
+                  {% for choice in field.choices %}
+                    <option value="{{ choice }}">{{ choice }}</option>
+                  {% endfor %}
+                </select>
+              {% elif field.type == "integer" %}
+                <input id="{{ name }}" name="{{ name }}" type="number" step="1" required>
+              {% elif field.type == "number" %}
+                <input id="{{ name }}" name="{{ name }}" type="number" step="any" required>
+              {% else %}
+                <input id="{{ name }}" name="{{ name }}" type="text" required>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+
+        <button id="submit-button" type="submit">Run prediction</button>
+      </form>
+
+      <div id="message" class="message" role="alert" hidden></div>
+
+      <section id="result" class="result" hidden>
+        <p class="result-label">Prediction</p>
+        <p id="prediction-value" class="prediction-value"></p>
+        <div id="probabilities" class="probabilities"></div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById("prediction-form");
+    const message = document.getElementById("message");
+    const result = document.getElementById("result");
+    const predictionValue = document.getElementById("prediction-value");
+    const probabilities = document.getElementById("probabilities");
+    const submitButton = document.getElementById("submit-button");
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      message.hidden = true;
+      result.hidden = true;
+      submitButton.disabled = true;
+      submitButton.textContent = "Predicting...";
+
+      const payload = Object.fromEntries(new FormData(form).entries());
+
+      try {
+        const response = await fetch("/predict", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          message.textContent = data.error || "Please check the submitted values.";
+          message.className = "message error";
+          message.hidden = false;
+          return;
+        }
+
+        predictionValue.textContent = data.prediction;
+        probabilities.innerHTML = "";
+        if (data.probabilities && data.probabilities.length) {
+          const heading = document.createElement("p");
+          heading.className = "probability-heading";
+          heading.textContent = "Probabilities";
+          probabilities.appendChild(heading);
+
+          data.probabilities
+            .slice()
+            .sort((a, b) => b.probability - a.probability)
+            .forEach((item) => {
+              const row = document.createElement("div");
+              row.className = "probability-row";
+              const percent = (item.probability * 100).toFixed(2) + "%";
+              row.innerHTML =
+                `<span>${escapeHtml(item.label)}</span>` +
+                `<strong>${percent}</strong>`;
+              probabilities.appendChild(row);
+            });
+        }
+        result.hidden = false;
+      } catch (error) {
+        message.textContent = "The prediction service is unavailable. Please try again.";
+        message.className = "message error";
+        message.hidden = false;
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = "Run prediction";
+      }
+    });
+
+    function escapeHtml(value) {
+      const element = document.createElement("span");
+      element.textContent = value;
+      return element.innerHTML;
+    }
+  </script>
+</body>
+</html>
